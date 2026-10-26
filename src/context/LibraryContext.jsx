@@ -55,6 +55,9 @@ export function LibraryProvider({ children }) {
   }, []);
 
   const openComputer = useCallback(() => {
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (e) {}
+    }
     setIsComputerOpen(true);
   }, []);
 
@@ -67,6 +70,9 @@ export function LibraryProvider({ children }) {
   const openReader = useCallback((bookId) => {
     const book = books.find(b => b.id === bookId);
     if (!book) return;
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (e) {}
+    }
     const saved = loadBookProgress(book.id) || book.currentPage || 1;
     setActiveReaderBook(book);
     setReaderPage(saved);
@@ -81,6 +87,9 @@ export function LibraryProvider({ children }) {
 
   const openPause = useCallback(() => {
     if (isComputerOpen || activeReaderBook || isTransitioning) return;
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (e) {}
+    }
     setIsPauseOpen(true);
   }, [isComputerOpen, activeReaderBook, isTransitioning]);
 

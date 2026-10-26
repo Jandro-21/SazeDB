@@ -7,6 +7,17 @@ export function Blocker() {
 
   if (hasGameStarted) return null;
 
+  const handleStart = () => {
+    startGame();
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (!isTouch) {
+      try {
+        const canvas = document.querySelector('#canvas-container canvas');
+        canvas?.requestPointerLock?.();
+      } catch (e) {}
+    }
+  };
+
   return (
     <div id="blocker">
       <div className="intro-card">
@@ -44,7 +55,7 @@ export function Blocker() {
           </div>
         </div>
 
-        <button type="button" className="start-btn" onClick={startGame}>
+        <button type="button" className="start-btn" onClick={handleStart}>
           <Play size={18} />
           <span>Entrar a la biblioteca</span>
         </button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Gamepad2, ArrowLeft, Pause, Sliders, RotateCcw } from 'lucide-react';
 import { useLibrary } from '../../context/LibraryContext';
 
@@ -13,6 +13,24 @@ export function PauseMenu() {
   } = useLibrary();
 
   const [showControls, setShowControls] = useState(false);
+
+  // Cerrar pausa o volver de controles con Escape
+  useEffect(() => {
+    if (!isPauseOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (showControls) {
+          setShowControls(false);
+        } else {
+          closePause();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPauseOpen, showControls, closePause]);
 
   if (!isPauseOpen) return null;
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Monitor,
   X,
@@ -43,6 +43,20 @@ export function ComputerModal() {
 
   const fileInputRef = useRef(null);
   const coverFileInputRef = useRef(null);
+
+  // Salir con Escape de vuelta al HUB 3D sin abrir menú de pausa
+  useEffect(() => {
+    if (!isComputerOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeComputer();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isComputerOpen, closeComputer]);
 
   if (!isComputerOpen) return null;
 

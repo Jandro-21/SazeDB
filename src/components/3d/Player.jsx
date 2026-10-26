@@ -41,13 +41,32 @@ export function Player() {
   const cameraPitch = useRef(0);
   const touchStart = useRef({ x: 0, y: 0, active: false });
 
+  // Determinar si estamos exclusivamente en el HUB 3D activo
+  const isHubActive = hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen && !isTransitioning;
+
+  // Garantizar que fuera del HUB 3D el puntero esté 100% libre y visible
+  useEffect(() => {
+    if (!isHubActive) {
+      if (document.pointerLockElement) {
+        try {
+          document.exitPointerLock();
+        } catch (e) {}
+      }
+      if (controlsRef.current && controlsRef.current.isLocked) {
+        try {
+          controlsRef.current.unlock();
+        } catch (e) {}
+      }
+    }
+  }, [isHubActive]);
+
   // Manejador de teclado en PC
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         return;
       }
-      if (isComputerOpen || activeReaderBook || isPauseOpen) {
+      if (!isHubActive) {
         return;
       }
 
@@ -77,24 +96,38 @@ export function Player() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isComputerOpen, activeReaderBook, isPauseOpen]);
+  }, [isHubActive]);
 
-  // Interacción central con E o Clic
+  // Interacción central con E o Clic en primera persona
   const triggerCenterInteraction = useCallback(() => {
     raycaster.current.setFromCamera(centerCoord.current, camera);
     const intersects = raycaster.current.intersectObjects(scene.children, true);
 
     for (let i = 0; i < intersects.length; i++) {
       const hit = intersects[i];
-      if (hit.distance > 4.6) break;
+      if (hit.distance > 4.8) break;
 
       let obj = hit.object;
       while (obj) {
         if (obj.userData?.isBook) {
+          // Liberar el ratón inmediatamente antes de abrir el lector
+          if (document.pointerLockElement) {
+            try { document.exitPointerLock(); } catch (e) {}
+          }
+          if (controlsRef.current && controlsRef.current.isLocked) {
+            try { controlsRef.current.unlock(); } catch (e) {}
+          }
           openReader(obj.userData.id);
           return;
         }
         if (obj.userData?.isComputer) {
+          // Liberar el ratón inmediatamente antes de abrir el PC
+          if (document.pointerLockElement) {
+            try { document.exitPointerLock(); } catch (e) {}
+          }
+          if (controlsRef.current && controlsRef.current.isLocked) {
+            try { controlsRef.current.unlock(); } catch (e) {}
+          }
           openComputer();
           return;
         }
@@ -103,18 +136,81 @@ export function Player() {
     }
   }, [camera, scene, openReader, openComputer]);
 
-  // Click de ratón en escritorio
+  // Click de ratón en el HUB 3D
   useEffect(() => {
-    const handleMouseDown = (e) => {
-      if (controlsRef.current?.isLocked && !isComputerOpen && !activeReaderBook && !isPauseOpen) {
-        if (e.button === 0) {
-          triggerCenterInteraction();
+    const handleCanvasClick = (e) => {
+      // Ignorar dispositivos táctiles
+      const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      if (isTouch) return;
+
+      // Solo actuar si estamos en el HUB 3D y fue clic izquierdo
+      if (!isHubActive || e.button !== 0) return;
+
+      const controls = controlsRef.current;
+
+      // Si el puntero ya está bloqueado, interactuar con el centro
+      if (controls && controls.isLocked) {
+        triggerCenterInteraction();
+      } else {
+        // Si el puntero no estaba bloqueado: comprobar si clicó directamente en un libro o PC
+        const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.current.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
+        const intersects = raycaster.current.intersectObjects(scene.children, true);
+
+        let clickedTarget = null;
+        for (let i = 0; i < intersects.length; i++) {
+          if (intersects[i].distance > 5.2) break;
+          let obj = intersects[i].object;
+          while (obj) {
+            if (obj.userData?.isBook) {
+              clickedTarget = { type: 'book', id: obj.userData.id };
+              break;
+            }
+            if (obj.userData?.isComputer) {
+              clickedTarget = { type: 'computer' };
+              break;
+            }
+            obj = obj.parent;
+          }
+          if (clickedTarget) break;
+        }
+
+        if (clickedTarget) {
+          // Abrir directamente con el ratón libre
+          if (clickedTarget.type === 'book') {
+            openReader(clickedTarget.id);
+          } else if (clickedTarget.type === 'computer') {
+            openComputer();
+          }
+        } else {
+          // Si hizo clic en la habitación vacía, activar el modo primera persona
+          try {
+            controls?.lock();
+          } catch (err) {}
         }
       }
     };
-    window.addEventListener('mousedown', handleMouseDown);
-    return () => window.removeEventListener('mousedown', handleMouseDown);
-  }, [isComputerOpen, activeReaderBook, isPauseOpen, triggerCenterInteraction]);
+
+    window.addEventListener('mousedown', handleCanvasClick);
+    return () => window.removeEventListener('mousedown', handleCanvasClick);
+  }, [isHubActive, camera, scene, triggerCenterInteraction, openReader, openComputer]);
+
+  // Manejador de Escape en el HUB 3D para pausar
+  useEffect(() => {
+    const handleEscapeInHub = (e) => {
+      if (e.key === 'Escape' && isHubActive) {
+        e.preventDefault();
+        if (document.pointerLockElement) {
+          try { document.exitPointerLock(); } catch (err) {}
+        }
+        openPause();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeInHub);
+    return () => window.removeEventListener('keydown', handleEscapeInHub);
+  }, [isHubActive, openPause]);
 
   // Control táctil de rotación de cámara en móviles
   useEffect(() => {
@@ -122,7 +218,7 @@ export function Player() {
     if (!dom) return;
 
     const handleTouchStart = (e) => {
-      if (!hasGameStarted || isComputerOpen || activeReaderBook || isPauseOpen) return;
+      if (!isHubActive) return;
       if (e.touches.length === 1) {
         touchStart.current = {
           x: e.touches[0].clientX,
@@ -133,7 +229,7 @@ export function Player() {
     };
 
     const handleTouchMove = (e) => {
-      if (!touchStart.current.active || isComputerOpen || activeReaderBook || isPauseOpen) return;
+      if (!touchStart.current.active || !isHubActive) return;
       if (e.touches.length !== 1) return;
 
       const deltaX = e.touches[0].clientX - touchStart.current.x;
@@ -163,46 +259,26 @@ export function Player() {
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [gl.domElement, hasGameStarted, isComputerOpen, activeReaderBook, isPauseOpen, cameraSensitivity, camera]);
+  }, [gl.domElement, isHubActive, cameraSensitivity, camera]);
 
-  // Manejo de eventos de bloqueo y desbloqueo de puntero (Escritorio)
+  // Reset de teclas al desbloquear puntero
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
 
     const handleUnlock = () => {
       setKeys({ forward: false, backward: false, left: false, right: false, sprint: false });
-
-      if (isComputerOpen || activeReaderBook || isTransitioning) {
-        return;
-      }
-
-      if (hasGameStarted) {
-        openPause();
-      }
     };
 
     controls.addEventListener('unlock', handleUnlock);
     return () => controls.removeEventListener('unlock', handleUnlock);
-  }, [hasGameStarted, isComputerOpen, activeReaderBook, isTransitioning, openPause]);
-
-  // Auto-bloqueo al iniciar o volver del menú
-  useEffect(() => {
-    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    if (!isTouch && hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen && !isTransitioning) {
-      if (controlsRef.current && !controlsRef.current.isLocked) {
-        try {
-          controlsRef.current.lock();
-        } catch (e) {}
-      }
-    }
-  }, [hasGameStarted, isComputerOpen, activeReaderBook, isPauseOpen, isTransitioning]);
+  }, []);
 
   // Actualización de físicas, movimiento y raycast por cada frame
   useFrame((state, delta) => {
     const isLocked = controlsRef.current?.isLocked;
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    const canMove = (isLocked || isTouch) && hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen;
+    const canMove = (isLocked || isTouch) && isHubActive;
     const clampedDelta = Math.min(delta, 0.1);
 
     if (canMove) {
@@ -257,7 +333,7 @@ export function Player() {
 
       for (let i = 0; i < intersects.length; i++) {
         const hit = intersects[i];
-        if (hit.distance > 4.6) break;
+        if (hit.distance > 4.8) break;
 
         let obj = hit.object;
         while (obj) {
@@ -283,5 +359,11 @@ export function Player() {
     }
   });
 
-  return <PointerLockControls ref={controlsRef} pointerSpeed={cameraSensitivity || 1.0} />;
+  return (
+    <PointerLockControls
+      ref={controlsRef}
+      enabled={isHubActive}
+      pointerSpeed={cameraSensitivity || 1.0}
+    />
+  );
 }
