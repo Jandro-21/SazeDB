@@ -49,53 +49,70 @@ export function LibraryProvider({ children }) {
     saveBooksToStorage(books);
   }, [books]);
 
-  const startGame = useCallback(() => {
-    setHasGameStarted(true);
-    setIsPauseOpen(false);
+  // Funciones seguras de bloqueo y desbloqueo de cursor para el HUB 3D
+  const lockHubPointer = useCallback(() => {
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (!isTouch) {
+      setTimeout(() => {
+        try {
+          const canvas = document.querySelector('#canvas-container canvas');
+          canvas?.requestPointerLock?.();
+        } catch (e) {}
+      }, 30);
+    }
   }, []);
 
-  const openComputer = useCallback(() => {
+  const unlockHubPointer = useCallback(() => {
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch (e) {}
     }
-    setIsComputerOpen(true);
   }, []);
+
+  const startGame = useCallback(() => {
+    setHasGameStarted(true);
+    setIsPauseOpen(false);
+    lockHubPointer();
+  }, [lockHubPointer]);
+
+  const openComputer = useCallback(() => {
+    unlockHubPointer();
+    setIsComputerOpen(true);
+  }, [unlockHubPointer]);
 
   const closeComputer = useCallback(() => {
     setIsTransitioning(true);
     setIsComputerOpen(false);
-    setTimeout(() => setIsTransitioning(false), 300);
-  }, []);
+    lockHubPointer();
+    setTimeout(() => setIsTransitioning(false), 200);
+  }, [lockHubPointer]);
 
   const openReader = useCallback((bookId) => {
     const book = books.find(b => b.id === bookId);
     if (!book) return;
-    if (document.pointerLockElement) {
-      try { document.exitPointerLock(); } catch (e) {}
-    }
+    unlockHubPointer();
     const saved = loadBookProgress(book.id) || book.currentPage || 1;
     setActiveReaderBook(book);
     setReaderPage(saved);
     if (isComputerOpen) setIsComputerOpen(false);
-  }, [books, isComputerOpen]);
+  }, [books, isComputerOpen, unlockHubPointer]);
 
   const closeReader = useCallback(() => {
     setIsTransitioning(true);
     setActiveReaderBook(null);
-    setTimeout(() => setIsTransitioning(false), 300);
-  }, []);
+    lockHubPointer();
+    setTimeout(() => setIsTransitioning(false), 200);
+  }, [lockHubPointer]);
 
   const openPause = useCallback(() => {
     if (isComputerOpen || activeReaderBook || isTransitioning) return;
-    if (document.pointerLockElement) {
-      try { document.exitPointerLock(); } catch (e) {}
-    }
+    unlockHubPointer();
     setIsPauseOpen(true);
-  }, [isComputerOpen, activeReaderBook, isTransitioning]);
+  }, [isComputerOpen, activeReaderBook, isTransitioning, unlockHubPointer]);
 
   const closePause = useCallback(() => {
     setIsPauseOpen(false);
-  }, []);
+    lockHubPointer();
+  }, [lockHubPointer]);
 
   const updateReaderPage = useCallback((pageNum) => {
     setReaderPage(pageNum);
@@ -200,7 +217,9 @@ export function LibraryProvider({ children }) {
       sprintSpeed,
       updateSprintSpeed,
       mobileMove,
-      setMobileMove
+      setMobileMove,
+      lockHubPointer,
+      unlockHubPointer
     }}>
       {children}
     </LibraryContext.Provider>

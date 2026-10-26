@@ -1,12 +1,12 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { PointerLockControls } from '@react-three/drei';
+import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import * as THREE from 'three';
 import { useLibrary } from '../../context/LibraryContext';
 
 export function Player() {
   const { camera, scene, gl } = useThree();
-  const controlsRef = useRef();
+  const controlsRef = useRef(null);
   const {
     hasGameStarted,
     isComputerOpen,
@@ -19,7 +19,9 @@ export function Player() {
     setHoveredTarget,
     cameraSensitivity,
     sprintSpeed,
-    mobileMove
+    mobileMove,
+    lockHubPointer,
+    unlockHubPointer
   } = useLibrary();
 
   // Teclas de movimiento de teclado
@@ -44,18 +46,57 @@ export function Player() {
   // Determinar si estamos exclusivamente en el HUB 3D activo
   const isHubActive = hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen && !isTransitioning;
 
-  // Garantizar que fuera del HUB 3D el puntero esté 100% libre y visible
+  // Inicializar PointerLockControls nativo de Three.js (sin listeners automáticos indeseados)
   useEffect(() => {
-    if (!isHubActive) {
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (isTouch) return;
+
+    const controls = new PointerLockControls(camera, gl.domElement);
+    controls.pointerSpeed = cameraSensitivity || 1.0;
+    controlsRef.current = controls;
+
+    const handleUnlock = () => {
+      setKeys({ forward: false, backward: false, left: false, right: false, sprint: false });
+    };
+
+    controls.addEventListener('unlock', handleUnlock);
+
+    return () => {
+      controls.removeEventListener('unlock', handleUnlock);
+      controls.dispose();
+      controlsRef.current = null;
+    };
+  }, [camera, gl.domElement]);
+
+  // Actualizar sensibilidad en tiempo real
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.pointerSpeed = cameraSensitivity || 1.0;
+    }
+  }, [cameraSensitivity]);
+
+  // Auto-ocultar cursor al estar en el HUB y mostrarlo al salir a cualquier interactuable
+  useEffect(() => {
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (isTouch) return;
+
+    if (isHubActive) {
+      // Auto-ocultar cursor al volver al HUB 3D sin tener que dar clic
+      const timer = setTimeout(() => {
+        if (!controlsRef.current?.isLocked && !document.pointerLockElement) {
+          try {
+            controlsRef.current?.lock();
+          } catch (e) {}
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      // Mostrar cursor inmediatamente en libros, PC o pausa
       if (document.pointerLockElement) {
-        try {
-          document.exitPointerLock();
-        } catch (e) {}
+        try { document.exitPointerLock(); } catch (e) {}
       }
-      if (controlsRef.current && controlsRef.current.isLocked) {
-        try {
-          controlsRef.current.unlock();
-        } catch (e) {}
+      if (controlsRef.current?.isLocked) {
+        try { controlsRef.current?.unlock(); } catch (e) {}
       }
     }
   }, [isHubActive]);
@@ -98,7 +139,7 @@ export function Player() {
     };
   }, [isHubActive]);
 
-  // Interacción central con E o Clic en primera persona
+  // Interacción central con E o Clic: muestra el cursor al interactuar
   const triggerCenterInteraction = useCallback(() => {
     raycaster.current.setFromCamera(centerCoord.current, camera);
     const intersects = raycaster.current.intersectObjects(scene.children, true);
@@ -110,107 +151,57 @@ export function Player() {
       let obj = hit.object;
       while (obj) {
         if (obj.userData?.isBook) {
-          // Liberar el ratón inmediatamente antes de abrir el lector
-          if (document.pointerLockElement) {
-            try { document.exitPointerLock(); } catch (e) {}
-          }
-          if (controlsRef.current && controlsRef.current.isLocked) {
-            try { controlsRef.current.unlock(); } catch (e) {}
-          }
+          // Mostrar cursor inmediatamente
+          unlockHubPointer();
           openReader(obj.userData.id);
           return;
         }
         if (obj.userData?.isComputer) {
-          // Liberar el ratón inmediatamente antes de abrir el PC
-          if (document.pointerLockElement) {
-            try { document.exitPointerLock(); } catch (e) {}
-          }
-          if (controlsRef.current && controlsRef.current.isLocked) {
-            try { controlsRef.current.unlock(); } catch (e) {}
-          }
+          // Mostrar cursor inmediatamente
+          unlockHubPointer();
           openComputer();
           return;
         }
         obj = obj.parent;
       }
     }
-  }, [camera, scene, openReader, openComputer]);
+  }, [camera, scene, openReader, openComputer, unlockHubPointer]);
 
-  // Click de ratón en el HUB 3D
+  // Clic en el HUB 3D: interactuar si está bloqueado o re-bloquear si se perdió el foco
   useEffect(() => {
     const handleCanvasClick = (e) => {
-      // Ignorar dispositivos táctiles
       const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-      if (isTouch) return;
-
-      // Solo actuar si estamos en el HUB 3D y fue clic izquierdo
-      if (!isHubActive || e.button !== 0) return;
+      if (isTouch || !isHubActive || e.button !== 0) return;
 
       const controls = controlsRef.current;
-
-      // Si el puntero ya está bloqueado, interactuar con el centro
       if (controls && controls.isLocked) {
         triggerCenterInteraction();
       } else {
-        // Si el puntero no estaba bloqueado: comprobar si clicó directamente en un libro o PC
-        const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
-        const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
-        raycaster.current.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
-        const intersects = raycaster.current.intersectObjects(scene.children, true);
-
-        let clickedTarget = null;
-        for (let i = 0; i < intersects.length; i++) {
-          if (intersects[i].distance > 5.2) break;
-          let obj = intersects[i].object;
-          while (obj) {
-            if (obj.userData?.isBook) {
-              clickedTarget = { type: 'book', id: obj.userData.id };
-              break;
-            }
-            if (obj.userData?.isComputer) {
-              clickedTarget = { type: 'computer' };
-              break;
-            }
-            obj = obj.parent;
-          }
-          if (clickedTarget) break;
-        }
-
-        if (clickedTarget) {
-          // Abrir directamente con el ratón libre
-          if (clickedTarget.type === 'book') {
-            openReader(clickedTarget.id);
-          } else if (clickedTarget.type === 'computer') {
-            openComputer();
-          }
-        } else {
-          // Si hizo clic en la habitación vacía, activar el modo primera persona
-          try {
-            controls?.lock();
-          } catch (err) {}
-        }
+        // Si no estaba bloqueado, bloquear y ocultar cursor al hacer clic en el HUB
+        try {
+          controls?.lock();
+        } catch (err) {}
       }
     };
 
-    window.addEventListener('mousedown', handleCanvasClick);
-    return () => window.removeEventListener('mousedown', handleCanvasClick);
-  }, [isHubActive, camera, scene, triggerCenterInteraction, openReader, openComputer]);
+    const dom = gl.domElement;
+    dom.addEventListener('click', handleCanvasClick);
+    return () => dom.removeEventListener('click', handleCanvasClick);
+  }, [isHubActive, gl.domElement, triggerCenterInteraction]);
 
-  // Manejador de Escape en el HUB 3D para pausar
+  // Tecla Escape en el HUB 3D para pausar y mostrar cursor
   useEffect(() => {
     const handleEscapeInHub = (e) => {
       if (e.key === 'Escape' && isHubActive) {
         e.preventDefault();
-        if (document.pointerLockElement) {
-          try { document.exitPointerLock(); } catch (err) {}
-        }
+        unlockHubPointer();
         openPause();
       }
     };
 
     window.addEventListener('keydown', handleEscapeInHub);
     return () => window.removeEventListener('keydown', handleEscapeInHub);
-  }, [isHubActive, openPause]);
+  }, [isHubActive, unlockHubPointer, openPause]);
 
   // Control táctil de rotación de cámara en móviles
   useEffect(() => {
@@ -239,7 +230,7 @@ export function Player() {
 
       const sens = 0.0035 * (cameraSensitivity || 1.0);
       cameraYaw.current -= deltaX * sens;
-      cameraPitch.current = Math.max(-1.3, Math.min(1.3, cameraPitch.current - deltaY * sens));
+      cameraPitch.current = Math.max(-1.45, Math.min(1.45, cameraPitch.current - deltaY * sens));
 
       camera.quaternion.setFromEuler(new THREE.Euler(cameraPitch.current, cameraYaw.current, 0, 'YXZ'));
     };
@@ -261,20 +252,7 @@ export function Player() {
     };
   }, [gl.domElement, isHubActive, cameraSensitivity, camera]);
 
-  // Reset de teclas al desbloquear puntero
-  useEffect(() => {
-    const controls = controlsRef.current;
-    if (!controls) return;
-
-    const handleUnlock = () => {
-      setKeys({ forward: false, backward: false, left: false, right: false, sprint: false });
-    };
-
-    controls.addEventListener('unlock', handleUnlock);
-    return () => controls.removeEventListener('unlock', handleUnlock);
-  }, []);
-
-  // Actualización de físicas, movimiento y raycast por cada frame
+  // Físicas de movimiento y actualización de fotograma
   useFrame((state, delta) => {
     const isLocked = controlsRef.current?.isLocked;
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
@@ -282,11 +260,9 @@ export function Player() {
     const clampedDelta = Math.min(delta, 0.1);
 
     if (canMove) {
-      // Amortiguación
       velocity.current.x -= velocity.current.x * 10.0 * clampedDelta;
       velocity.current.z -= velocity.current.z * 10.0 * clampedDelta;
 
-      // Combinar entradas de teclado físico y D-pad móvil
       const moveFwd = keys.forward || mobileMove.forward;
       const moveBack = keys.backward || mobileMove.backward;
       const moveLeft = keys.left || mobileMove.left;
@@ -301,22 +277,21 @@ export function Player() {
       if (moveFwd || moveBack) velocity.current.z -= direction.current.z * speed * clampedDelta;
       if (moveLeft || moveRight) velocity.current.x -= direction.current.x * speed * clampedDelta;
 
-      if (isLocked) {
+      if (isLocked && controlsRef.current) {
         controlsRef.current.moveRight(-velocity.current.x * clampedDelta);
         controlsRef.current.moveForward(-velocity.current.z * clampedDelta);
       } else {
-        // En móviles trasladamos en base al ángulo actual de la cámara
         const forwardVec = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, cameraYaw.current, 0));
         const rightVec = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, cameraYaw.current, 0));
         camera.position.addScaledVector(forwardVec, -velocity.current.z * clampedDelta);
         camera.position.addScaledVector(rightVec, -velocity.current.x * clampedDelta);
       }
 
-      // Límites perimetrales de la habitación de 14x14m
+      // Límites perimetrales de la sala
       const pos = camera.position;
       pos.x = Math.max(-5.8, Math.min(5.8, pos.x));
       pos.z = Math.max(-5.8, Math.min(5.8, pos.z));
-      pos.y = 1.7; // Altura estándar de ojos
+      pos.y = 1.7;
 
       // FOV dinámico al esprintar
       const isMoving = moveFwd || moveBack || moveLeft || moveRight;
@@ -326,7 +301,7 @@ export function Player() {
         camera.updateProjectionMatrix();
       }
 
-      // Raycasting continuo para HUD y botones móviles
+      // Raycasting continuo para HUD interactivo
       raycaster.current.setFromCamera(centerCoord.current, camera);
       const intersects = raycaster.current.intersectObjects(scene.children, true);
       let detectedTarget = null;
@@ -359,11 +334,5 @@ export function Player() {
     }
   });
 
-  return (
-    <PointerLockControls
-      ref={controlsRef}
-      enabled={isHubActive}
-      pointerSpeed={cameraSensitivity || 1.0}
-    />
-  );
+  return null;
 }
