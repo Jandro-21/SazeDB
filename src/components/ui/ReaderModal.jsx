@@ -150,7 +150,7 @@ export function ReaderModal() {
       // Si llega a la última página y no está leído
       if (nextP === totalPages && activeReaderBook && !activeReaderBook.isRead) {
         setTimeout(() => {
-          if (confirm(`🎉 ¡Has completado "${activeReaderBook.title}"! ¿Deseas colocarlo en la estantería de Libros Leídos?`)) {
+          if (confirm(`¡Has completado "${activeReaderBook.title}"! ¿Deseas colocarlo en la estantería de Libros Leídos?`)) {
             markAsRead(activeReaderBook.id);
           }
         }, 300);

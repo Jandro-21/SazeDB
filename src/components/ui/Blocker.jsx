@@ -24,11 +24,11 @@ export function Blocker() {
             <span className="key-badge">A</span>
             <span className="key-badge">S</span>
             <span className="key-badge">D</span>
-            Moverte por la habitación
+            Moverte por la habitación (o D-Pad táctil)
           </div>
           <div>
-            <span className="key-badge">Ratón</span>
-            Mirar alrededor y apuntar
+            <span className="key-badge">Ratón / Toque</span>
+            Mirar alrededor y apuntar (ratón o arrastrar pantalla)
           </div>
           <div>
             <span className="key-badge">Shift</span>

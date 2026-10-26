@@ -235,11 +235,13 @@ html, body, #root, .app-container {
   background-color: #fffdfa;
   border: 1px solid #ebdcd0;
   border-radius: 18px;
-  padding: 34px 36px;
-  max-width: 480px;
+  padding: 30px 32px;
+  max-width: 520px;
   width: 100%;
   text-align: center;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  max-height: 92vh;
+  overflow-y: auto;
 }
 
 .pause-header {
@@ -365,6 +367,136 @@ html, body, #root, .app-container {
 .pause-credits strong {
   color: #3b2417;
   font-weight: 700;
+}
+
+/* -------------------------------------------------------------
+   SLIDERS DE SENSIBILIDAD Y VELOCIDAD DE SPRINT (PAUSE MENU)
+------------------------------------------------------------- */
+.sliders-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.slider-group {
+  background-color: #fbf7f2;
+  border: 1px solid #ebdcd0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slider-label {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #3b2417;
+}
+
+.slider-val-badge {
+  background-color: #c4683c;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+.pause-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2d2c4;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pause-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #c4683c;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.pause-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+  background: #b3562a;
+}
+
+.pause-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #c4683c;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.slider-desc {
+  font-size: 0.76rem;
+  color: #8c7365;
+  line-height: 1.35;
+}
+
+.controls-guide {
+  background-color: #f7ebe1;
+  border: 1px solid #e5d2c2;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  font-size: 0.88rem;
+  color: #4a3427;
+  margin-bottom: 18px;
+}
+
+.controls-guide div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fffdfa;
+  border: 1px solid #cdb8a8;
+  border-bottom: 2px solid #b8a08e;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #3b2417;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.controls-footer-actions {
+  display: flex;
+  gap: 12px;
 }
 
 /* -------------------------------------------------------------
@@ -1154,9 +1286,9 @@ input[type="color"] {
 }
 
 /* -------------------------------------------------------------
-   CONTROLES TÁCTILES MÓVILES
+   CONTROLES TÁCTILES MÓVILES (D-PAD ERGONÓMICO Y ACCIONES)
 ------------------------------------------------------------- */
-#mobile-controls {
+#mobile-hud-overlay {
   position: absolute;
   top: 0;
   left: 0;
@@ -1164,51 +1296,209 @@ input[type="color"] {
   height: 100%;
   pointer-events: none;
   z-index: 30;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-.mobile-action-zone {
+.mobile-top-pause-btn {
   position: absolute;
-  bottom: 24px;
-  right: 20px;
+  top: max(16px, env(safe-area-inset-top, 16px));
+  right: max(16px, env(safe-area-inset-right, 16px));
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  pointer-events: auto;
+  background-color: rgba(30, 22, 17, 0.86);
+  border: 2px solid rgba(244, 162, 97, 0.4);
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+  z-index: 35;
+}
+
+.mobile-top-pause-btn:active {
+  transform: scale(0.92);
+  background-color: #c4683c;
+}
+
+/* Contenedor del D-Pad en esquina inferior izquierda */
+.mobile-dpad-container {
+  position: absolute;
+  bottom: max(20px, env(safe-area-inset-bottom, 20px));
+  left: max(20px, env(safe-area-inset-left, 20px));
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 35;
+}
+
+.dpad-disc {
+  width: 154px;
+  height: 154px;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(circle, rgba(46, 32, 24, 0.90) 0%, rgba(22, 15, 11, 0.96) 100%);
+  border: 2px solid rgba(244, 162, 97, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 2px 4px rgba(255, 255, 255, 0.12);
+}
+
+.dpad-btn {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f7eee4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 0.1s ease, background-color 0.1s ease, color 0.1s ease;
+}
+
+.dpad-up {
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dpad-down {
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dpad-left {
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.dpad-right {
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.dpad-up:active, .dpad-down:active, .dpad-left:active, .dpad-right:active {
+  background: #c4683c;
+  color: #ffffff;
+  border-color: #ffb703;
+  box-shadow: 0 0 14px rgba(196, 104, 60, 0.85);
+}
+
+.dpad-up:active {
+  transform: translateX(-50%) scale(1.1);
+}
+.dpad-down:active {
+  transform: translateX(-50%) scale(1.1);
+}
+.dpad-left:active {
+  transform: translateY(-50%) scale(1.1);
+}
+.dpad-right:active {
+  transform: translateY(-50%) scale(1.1);
+}
+
+.dpad-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(18, 12, 9, 0.85);
+  border: 1px solid rgba(244, 162, 97, 0.25);
+  pointer-events: none;
+}
+
+/* Zona de botones de acción en esquina inferior derecha */
+.mobile-actions-container {
+  position: absolute;
+  bottom: max(20px, env(safe-area-inset-bottom, 20px));
+  right: max(20px, env(safe-area-inset-right, 20px));
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
+  z-index: 35;
 }
 
-.mobile-action-btn {
+.mobile-sprint-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 22px;
-  background-color: #c4683c;
-  color: #ffffff;
-  border: 2px solid rgba(255, 235, 215, 0.4);
+  gap: 6px;
+  padding: 10px 18px;
   border-radius: 30px;
+  background-color: rgba(38, 28, 21, 0.88);
+  border: 2px solid rgba(244, 162, 97, 0.35);
+  color: #ebdcd0;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 0.95rem;
   font-weight: 700;
-  box-shadow: 0 6px 20px rgba(196, 104, 60, 0.5);
+  font-size: 0.84rem;
   cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: all 0.18s ease;
 }
 
-.mobile-pause-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background-color: rgba(36, 26, 20, 0.85);
-  border: 2px solid rgba(255, 235, 215, 0.35);
+.mobile-sprint-btn.active {
+  background-color: #e76f51;
+  border-color: #ffb703;
   color: #ffffff;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 16px rgba(231, 111, 81, 0.7);
+  transform: scale(1.04);
+}
+
+.sprint-label {
+  letter-spacing: 0.5px;
+}
+
+.mobile-main-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-radius: 30px;
+  background-color: #c4683c;
+  color: #ffffff;
+  border: 2px solid rgba(255, 235, 215, 0.45);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
   cursor: pointer;
+  box-shadow: 0 6px 20px rgba(196, 104, 60, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  max-width: min(260px, 55vw);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+  animation: promptIn 0.2s ease-out;
+}
+
+.mobile-main-action-btn:active {
+  transform: scale(0.96);
+  background-color: #b3562a;
+}
+
+.action-title-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* -------------------------------------------------------------
-   RESPONSIVIDAD MÓVIL
+   RESPONSIVIDAD MÓVIL: RETRATO Y PAISAJE
 ------------------------------------------------------------- */
 @media (max-width: 768px) {
   #computer-modal {
@@ -1267,5 +1557,109 @@ input[type="color"] {
     font-size: 0.8rem;
     padding: 8px 14px;
     bottom: 90px;
+  }
+}
+
+/* Modo Paisaje Móvil (Horizontal) */
+@media (orientation: landscape) and (max-height: 540px) {
+  .mobile-dpad-container {
+    bottom: max(10px, env(safe-area-inset-bottom, 10px));
+    left: max(16px, env(safe-area-inset-left, 16px));
+  }
+
+  .dpad-disc {
+    width: 122px;
+    height: 122px;
+  }
+
+  .dpad-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .dpad-center {
+    width: 28px;
+    height: 28px;
+  }
+
+  .mobile-actions-container {
+    bottom: max(10px, env(safe-area-inset-bottom, 10px));
+    right: max(16px, env(safe-area-inset-right, 16px));
+    gap: 8px;
+  }
+
+  .mobile-sprint-btn {
+    padding: 7px 13px;
+    font-size: 0.78rem;
+  }
+
+  .mobile-main-action-btn {
+    padding: 9px 16px;
+    font-size: 0.85rem;
+  }
+
+  .mobile-top-pause-btn {
+    width: 40px;
+    height: 40px;
+    top: max(10px, env(safe-area-inset-top, 10px));
+    right: max(16px, env(safe-area-inset-right, 16px));
+  }
+
+  .pause-card {
+    padding: 20px 24px;
+    max-height: 94vh;
+  }
+
+  .sliders-section {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .slider-group {
+    padding: 10px 14px;
+  }
+
+  .controls-guide {
+    padding: 10px 14px;
+    gap: 6px;
+    font-size: 0.8rem;
+    margin-bottom: 12px;
+  }
+
+  #computer-modal {
+    height: 100vh;
+  }
+
+  .os-content {
+    flex-direction: row;
+  }
+
+  .mobile-os-tabs {
+    display: none;
+  }
+
+  .crud-form-col {
+    width: 48%;
+    border-right: 1px solid #ebdcd0;
+    display: flex !important;
+    overflow-y: auto;
+  }
+
+  .crud-list-col {
+    width: 52%;
+    display: flex !important;
+    overflow-y: auto;
+  }
+
+  #reader-modal {
+    height: 100vh;
+  }
+
+  .reader-body {
+    height: calc(100vh - 100px);
+  }
+
+  .book-spread {
+    height: 100%;
   }
 }

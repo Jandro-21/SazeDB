@@ -1,11 +1,11 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useLibrary } from '../../context/LibraryContext';
 
 export function Player() {
-  const { camera, scene } = useThree();
+  const { camera, scene, gl } = useThree();
   const controlsRef = useRef();
   const {
     hasGameStarted,
@@ -16,10 +16,13 @@ export function Player() {
     openPause,
     openReader,
     openComputer,
-    setHoveredTarget
+    setHoveredTarget,
+    cameraSensitivity,
+    sprintSpeed,
+    mobileMove
   } = useLibrary();
 
-  // Teclas de movimiento
+  // Teclas de movimiento de teclado
   const [keys, setKeys] = useState({
     forward: false,
     backward: false,
@@ -33,15 +36,17 @@ export function Player() {
   const raycaster = useRef(new THREE.Raycaster());
   const centerCoord = useRef(new THREE.Vector2(0, 0));
 
-  // Manejador de teclado
+  // Ángulos de cámara para móviles / táctil
+  const cameraYaw = useRef(0);
+  const cameraPitch = useRef(0);
+  const touchStart = useRef({ x: 0, y: 0, active: false });
+
+  // Manejador de teclado en PC
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Si está en campos de texto, no mover el personaje
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         return;
       }
-
-      // Dentro de modales o pausa, no procesar movimiento
       if (isComputerOpen || activeReaderBook || isPauseOpen) {
         return;
       }
@@ -75,7 +80,7 @@ export function Player() {
   }, [isComputerOpen, activeReaderBook, isPauseOpen]);
 
   // Interacción central con E o Clic
-  const triggerCenterInteraction = () => {
+  const triggerCenterInteraction = useCallback(() => {
     raycaster.current.setFromCamera(centerCoord.current, camera);
     const intersects = raycaster.current.intersectObjects(scene.children, true);
 
@@ -96,20 +101,71 @@ export function Player() {
         obj = obj.parent;
       }
     }
-  };
+  }, [camera, scene, openReader, openComputer]);
 
-  // Click del ratón en primera persona
+  // Click de ratón en escritorio
   useEffect(() => {
-    const handleMouseDown = () => {
+    const handleMouseDown = (e) => {
       if (controlsRef.current?.isLocked && !isComputerOpen && !activeReaderBook && !isPauseOpen) {
-        triggerCenterInteraction();
+        if (e.button === 0) {
+          triggerCenterInteraction();
+        }
       }
     };
     window.addEventListener('mousedown', handleMouseDown);
     return () => window.removeEventListener('mousedown', handleMouseDown);
-  }, [isComputerOpen, activeReaderBook, isPauseOpen]);
+  }, [isComputerOpen, activeReaderBook, isPauseOpen, triggerCenterInteraction]);
 
-  // Manejo de eventos de bloqueo / desbloqueo de puntero
+  // Control táctil de rotación de cámara en móviles
+  useEffect(() => {
+    const dom = gl.domElement;
+    if (!dom) return;
+
+    const handleTouchStart = (e) => {
+      if (!hasGameStarted || isComputerOpen || activeReaderBook || isPauseOpen) return;
+      if (e.touches.length === 1) {
+        touchStart.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+          active: true
+        };
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (!touchStart.current.active || isComputerOpen || activeReaderBook || isPauseOpen) return;
+      if (e.touches.length !== 1) return;
+
+      const deltaX = e.touches[0].clientX - touchStart.current.x;
+      const deltaY = e.touches[0].clientY - touchStart.current.y;
+      touchStart.current.x = e.touches[0].clientX;
+      touchStart.current.y = e.touches[0].clientY;
+
+      const sens = 0.0035 * (cameraSensitivity || 1.0);
+      cameraYaw.current -= deltaX * sens;
+      cameraPitch.current = Math.max(-1.3, Math.min(1.3, cameraPitch.current - deltaY * sens));
+
+      camera.quaternion.setFromEuler(new THREE.Euler(cameraPitch.current, cameraYaw.current, 0, 'YXZ'));
+    };
+
+    const handleTouchEnd = () => {
+      touchStart.current.active = false;
+    };
+
+    dom.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    return () => {
+      dom.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [gl.domElement, hasGameStarted, isComputerOpen, activeReaderBook, isPauseOpen, cameraSensitivity, camera]);
+
+  // Manejo de eventos de bloqueo y desbloqueo de puntero (Escritorio)
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -130,9 +186,10 @@ export function Player() {
     return () => controls.removeEventListener('unlock', handleUnlock);
   }, [hasGameStarted, isComputerOpen, activeReaderBook, isTransitioning, openPause]);
 
-  // Auto-bloqueo al iniciar o reanudar
+  // Auto-bloqueo al iniciar o volver del menú
   useEffect(() => {
-    if (hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen && !isTransitioning) {
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (!isTouch && hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen && !isTransitioning) {
       if (controlsRef.current && !controlsRef.current.isLocked) {
         try {
           controlsRef.current.lock();
@@ -141,9 +198,11 @@ export function Player() {
     }
   }, [hasGameStarted, isComputerOpen, activeReaderBook, isPauseOpen, isTransitioning]);
 
-  // Físicas y Raycasting en useFrame
+  // Actualización de físicas, movimiento y raycast por cada frame
   useFrame((state, delta) => {
-    const canMove = controlsRef.current?.isLocked;
+    const isLocked = controlsRef.current?.isLocked;
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    const canMove = (isLocked || isTouch) && hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen;
     const clampedDelta = Math.min(delta, 0.1);
 
     if (canMove) {
@@ -151,32 +210,47 @@ export function Player() {
       velocity.current.x -= velocity.current.x * 10.0 * clampedDelta;
       velocity.current.z -= velocity.current.z * 10.0 * clampedDelta;
 
-      direction.current.z = Number(keys.forward) - Number(keys.backward);
-      direction.current.x = Number(keys.right) - Number(keys.left);
+      // Combinar entradas de teclado físico y D-pad móvil
+      const moveFwd = keys.forward || mobileMove.forward;
+      const moveBack = keys.backward || mobileMove.backward;
+      const moveLeft = keys.left || mobileMove.left;
+      const moveRight = keys.right || mobileMove.right;
+      const isSprinting = keys.sprint || mobileMove.sprint;
+
+      direction.current.z = Number(moveFwd) - Number(moveBack);
+      direction.current.x = Number(moveRight) - Number(moveLeft);
       direction.current.normalize();
 
-      const speed = keys.sprint ? 38.0 : 20.0;
-      if (keys.forward || keys.backward) velocity.current.z -= direction.current.z * speed * clampedDelta;
-      if (keys.left || keys.right) velocity.current.x -= direction.current.x * speed * clampedDelta;
+      const speed = isSprinting ? (sprintSpeed || 38.0) : 20.0;
+      if (moveFwd || moveBack) velocity.current.z -= direction.current.z * speed * clampedDelta;
+      if (moveLeft || moveRight) velocity.current.x -= direction.current.x * speed * clampedDelta;
 
-      controlsRef.current.moveRight(-velocity.current.x * clampedDelta);
-      controlsRef.current.moveForward(-velocity.current.z * clampedDelta);
+      if (isLocked) {
+        controlsRef.current.moveRight(-velocity.current.x * clampedDelta);
+        controlsRef.current.moveForward(-velocity.current.z * clampedDelta);
+      } else {
+        // En móviles trasladamos en base al ángulo actual de la cámara
+        const forwardVec = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, cameraYaw.current, 0));
+        const rightVec = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, cameraYaw.current, 0));
+        camera.position.addScaledVector(forwardVec, -velocity.current.z * clampedDelta);
+        camera.position.addScaledVector(rightVec, -velocity.current.x * clampedDelta);
+      }
 
-      // Límites de la habitación
+      // Límites perimetrales de la habitación de 14x14m
       const pos = camera.position;
       pos.x = Math.max(-5.8, Math.min(5.8, pos.x));
       pos.z = Math.max(-5.8, Math.min(5.8, pos.z));
-      pos.y = 1.7; // Altura de ojos fija
+      pos.y = 1.7; // Altura estándar de ojos
 
-      // Efecto sutil de FOV dinámico al esprintar
-      const isMoving = keys.forward || keys.backward || keys.left || keys.right;
-      const targetFov = (keys.sprint && isMoving) ? 78 : 70;
+      // FOV dinámico al esprintar
+      const isMoving = moveFwd || moveBack || moveLeft || moveRight;
+      const targetFov = (isSprinting && isMoving) ? 78 : 70;
       if (Math.abs(camera.fov - targetFov) > 0.1) {
         camera.fov += (targetFov - camera.fov) * 0.15;
         camera.updateProjectionMatrix();
       }
 
-      // Raycasting continuo para el puntero central HUD
+      // Raycasting continuo para HUD y botones móviles
       raycaster.current.setFromCamera(centerCoord.current, camera);
       const intersects = raycaster.current.intersectObjects(scene.children, true);
       let detectedTarget = null;
@@ -209,5 +283,5 @@ export function Player() {
     }
   });
 
-  return <PointerLockControls ref={controlsRef} />;
+  return <PointerLockControls ref={controlsRef} pointerSpeed={cameraSensitivity || 1.0} />;
 }

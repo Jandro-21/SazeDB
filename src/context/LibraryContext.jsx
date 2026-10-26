@@ -14,6 +14,36 @@ export function LibraryProvider({ children }) {
   const [hoveredTarget, setHoveredTarget] = useState(null); // { type: 'book' | 'computer', id, title, isRead }
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  // Configuración de controles ajustables
+  const [cameraSensitivity, setCameraSensitivity] = useState(() => {
+    const s = localStorage.getItem('sazedb_setting_sensitivity');
+    return s ? parseFloat(s) : 1.0;
+  });
+
+  const [sprintSpeed, setSprintSpeed] = useState(() => {
+    const s = localStorage.getItem('sazedb_setting_sprint_speed');
+    return s ? parseFloat(s) : 38.0;
+  });
+
+  const updateCameraSensitivity = useCallback((val) => {
+    setCameraSensitivity(val);
+    localStorage.setItem('sazedb_setting_sensitivity', String(val));
+  }, []);
+
+  const updateSprintSpeed = useCallback((val) => {
+    setSprintSpeed(val);
+    localStorage.setItem('sazedb_setting_sprint_speed', String(val));
+  }, []);
+
+  // Estado de movimiento desde D-Pad móvil
+  const [mobileMove, setMobileMove] = useState({
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    sprint: false
+  });
+
   // Guardar en LocalStorage cada vez que cambien los libros
   useEffect(() => {
     saveBooksToStorage(books);
@@ -155,7 +185,13 @@ export function LibraryProvider({ children }) {
       markAsRead,
       addBook,
       updateBook,
-      deleteBook
+      deleteBook,
+      cameraSensitivity,
+      updateCameraSensitivity,
+      sprintSpeed,
+      updateSprintSpeed,
+      mobileMove,
+      setMobileMove
     }}>
       {children}
     </LibraryContext.Provider>

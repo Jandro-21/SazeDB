@@ -4,43 +4,53 @@ import * as THREE from 'three';
 import { createSpineTexture, createCoverCanvasTexture, createPagesTexture } from '../../utils/textureGenerator';
 import { useLibrary } from '../../context/LibraryContext';
 
-export function computeBookTransform(indexOnShelf, isRead) {
-  const spacing = 0.44;
-  const maxPerShelf = 8;
-  const col = indexOnShelf % maxPerShelf;
-  const row = Math.floor(indexOnShelf / maxPerShelf);
-  const y = 1.0 + (row * 1.5);
+export function computeBookTransform(indexOnShelf, isRead, totalCount = 1) {
+  const spacing = 0.11;
+  const maxPerRow = 24;
+  const row = Math.floor(indexOnShelf / maxPerRow);
+  const col = indexOnShelf % maxPerRow;
+
+  // Baldas: 1.70 (media), 2.33 (alta), 1.07 (baja)
+  const shelfYList = [1.70, 2.33, 1.07];
+  const y = shelfYList[row % shelfYList.length];
+
+  const visibleInRow = Math.min(totalCount - (row * maxPerRow), maxPerRow);
+  const startOffset = -((Math.max(1, visibleInRow) - 1) * spacing) / 2;
 
   if (!isRead) {
-    const startX = -2.0;
+    // Estantería de Por Leer (Pared trasera: Z = -6.3)
     return {
-      position: [startX + (col * spacing), y, -5.0],
+      position: [startOffset + (col * spacing), y, -6.29],
       rotation: [0, 0, 0]
     };
   } else {
-    const startZ = -2.0;
+    // Estantería de Libros Leídos (Pared izquierda: X = -6.3)
     return {
-      position: [-5.0, y, startZ + (col * spacing)],
+      position: [-6.29, y, startOffset + (col * spacing)],
       rotation: [0, Math.PI / 2, 0]
     };
   }
 }
 
-export function Book3D({ book, indexOnShelf }) {
+export function Book3D({ book, indexOnShelf, totalInShelf = 1 }) {
   const meshRef = useRef();
   const { openReader, setHoveredTarget } = useLibrary();
   const [hovered, setHovered] = useState(false);
 
-  // Calcular objetivo de posición y rotación
-  const target = useMemo(() => {
-    return computeBookTransform(indexOnShelf, book.isRead);
-  }, [indexOnShelf, book.isRead]);
+  // Calcular objetivo de posición y rotación base
+  const baseTransform = useMemo(() => {
+    return computeBookTransform(indexOnShelf, book.isRead, totalInShelf);
+  }, [indexOnShelf, book.isRead, totalInShelf]);
 
   // Cargar portada personalizada o textura canvas
   const coverTexture = useMemo(() => {
     if (book.coverImage) {
       const loader = new THREE.TextureLoader();
-      return loader.load(book.coverImage);
+      const tex = loader.load(book.coverImage);
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      return tex;
     }
     return createCoverCanvasTexture(book.title, book.author, book.color);
   }, [book.coverImage, book.title, book.author, book.color]);
@@ -53,26 +63,27 @@ export function Book3D({ book, indexOnShelf }) {
     return createPagesTexture();
   }, []);
 
-  // Materiales de las 6 caras de la caja
-  // BoxGeometry caras: +X (cubierta derecha), -X (lomo), +Y (páginas arriba), -Y (páginas abajo), +Z (portada), -Z (contraportada)
+  // Materiales de las 6 caras del libro:
+  // [0: front (+X), 1: backCover (-X), 2: pagesTop (+Y), 3: pagesBottom (-Y), 4: spine (+Z), 5: pagesFore (-Z)]
   const materials = useMemo(() => {
     const baseColor = new THREE.Color(book.color || '#c4683c');
+
     const spineMat = new THREE.MeshStandardMaterial({
       map: spineTexture,
-      roughness: 0.6,
-      metalness: 0.1
+      roughness: 0.5,
+      metalness: 0.08
     });
 
-    const coverMat = new THREE.MeshStandardMaterial({
+    const frontMat = new THREE.MeshStandardMaterial({
       map: coverTexture,
       roughness: 0.5,
-      metalness: 0.15
+      metalness: 0.08
     });
 
     const backCoverMat = new THREE.MeshStandardMaterial({
       color: baseColor,
-      roughness: 0.6,
-      metalness: 0.1
+      roughness: 0.55,
+      metalness: 0.08
     });
 
     const pagesMat = new THREE.MeshStandardMaterial({
@@ -82,37 +93,41 @@ export function Book3D({ book, indexOnShelf }) {
     });
 
     return [
-      pagesMat,      // +X
-      spineMat,      // -X (lomo)
-      pagesMat,      // +Y
-      pagesMat,      // -Y
-      coverMat,      // +Z (portada)
-      backCoverMat   // -Z
+      frontMat,     // +X (portada derecha)
+      backCoverMat, // -X (contraportada izquierda)
+      pagesMat,     // +Y (borde superior páginas)
+      pagesMat,     // -Y (borde inferior páginas apoyado en balda)
+      spineMat,     // +Z (lomo con título visible hacia la habitación)
+      pagesMat      // -Z (corte de páginas hacia el fondo del mueble)
     ];
   }, [spineTexture, coverTexture, pagesTexture, book.color]);
 
-  // Animación suave de desplazamiento hacia su estante correspondiente
-  useFrame((state, delta) => {
+  // Animación suave de desplazamiento hacia su balda con leve extracción al apuntar
+  useFrame(() => {
     if (!meshRef.current) return;
     const mesh = meshRef.current;
 
-    // Posición
-    mesh.position.lerp(new THREE.Vector3(...target.position), 0.12);
+    const targetPos = [...baseTransform.position];
+    // Al hacer hover, el libro se asoma sutilmente hacia el jugador
+    if (hovered) {
+      if (!book.isRead) {
+        targetPos[2] += 0.05; // Asomarse en +Z
+      } else {
+        targetPos[0] += 0.05; // Asomarse en +X
+      }
+    }
 
-    // Rotación
-    const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(...target.rotation));
+    mesh.position.lerp(new THREE.Vector3(...targetPos), 0.12);
+
+    const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(...baseTransform.rotation));
     mesh.quaternion.slerp(targetQuat, 0.12);
-
-    // Resaltado sutil al apuntar
-    const targetScale = hovered ? 1.05 : 1.0;
-    mesh.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
   });
 
   return (
     <mesh
       ref={meshRef}
-      position={target.position}
-      rotation={target.rotation}
+      position={baseTransform.position}
+      rotation={baseTransform.rotation}
       material={materials}
       userData={{ isBook: true, id: book.id, title: book.title, isRead: book.isRead }}
       onPointerOver={(e) => {
@@ -134,7 +149,7 @@ export function Book3D({ book, indexOnShelf }) {
         openReader(book.id);
       }}
     >
-      <boxGeometry args={[0.34, 1.45, 1.05]} />
+      <boxGeometry args={[0.08, 0.44, 0.32]} />
     </mesh>
   );
 }
