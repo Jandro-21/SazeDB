@@ -1,0 +1,30 @@
+{
+  "name": "sazedb",
+  "private": true,
+  "version": "1.0.0",
+  "description": "SazeDB — Entorno 3D interactivo en primera persona para gestión y lectura de libros digitales (PDF / EPUB / AZW3) con React Three Fiber, LocalStorage e IndexedDB.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jandro-21/SazeDB.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.117.0",
+    "@react-three/fiber": "^8.17.10",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.460.0",
+    "pdfjs-dist": "^3.11.174",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
