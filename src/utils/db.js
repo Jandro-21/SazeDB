@@ -29,8 +29,13 @@ export async function saveBookFileToDB(bookId, arrayBuffer, fileName, fileType) 
   try {
     const db = await openFilesDB();
     if (!db) return;
-    const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put({ data: arrayBuffer, fileName, fileType }, bookId);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+      tx.objectStore(IDB_STORE).put({ data: arrayBuffer, fileName, fileType }, bookId);
+    });
   } catch (err) {
     console.warn('No se pudo guardar el archivo en IndexedDB:', err);
   }
@@ -40,8 +45,8 @@ export async function getBookFileFromDB(bookId) {
   try {
     const db = await openFilesDB();
     if (!db) return null;
-    const tx = db.transaction(IDB_STORE, 'readonly');
     return new Promise(resolve => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
       const req = tx.objectStore(IDB_STORE).get(bookId);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
@@ -55,7 +60,12 @@ export async function deleteBookFileFromDB(bookId) {
   try {
     const db = await openFilesDB();
     if (!db) return;
-    const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).delete(bookId);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+      tx.objectStore(IDB_STORE).delete(bookId);
+    });
   } catch (err) {}
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ChevronUp,
   ChevronDown,
@@ -21,14 +21,15 @@ export function MobileControls() {
     hoveredTarget,
     openReader,
     openComputer,
+    mobileMove,
     setMobileMove
   } = useLibrary();
 
   const [isSprintActive, setIsSprintActive] = useState(false);
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const discRef = useRef(null);
 
   // Detectar si el dispositivo es táctil o pantalla pequeña
-  const [isMobileDevice, setIsMobileDevice] = useState(false);
-
   useEffect(() => {
     const checkMobile = () => {
       const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 1024);
@@ -43,15 +44,78 @@ export function MobileControls() {
     return null;
   }
 
-  const handleDirStart = (dir) => (e) => {
+  // Actualizar movimiento según la posición del toque respecto al centro del D-Pad
+  const updateDirectionFromCoords = (clientX, clientY) => {
+    if (!discRef.current) return;
+    const rect = discRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const dx = clientX - centerX;
+    const dy = clientY - centerY;
+    const threshold = 12; // zona muerta central
+
+    const forward = dy < -threshold;
+    const backward = dy > threshold;
+    const left = dx < -threshold;
+    const right = dx > threshold;
+
+    setMobileMove(prev => ({
+      ...prev,
+      forward,
+      backward,
+      left,
+      right
+    }));
+  };
+
+  const handlePointerDownDisc = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+    updateDirectionFromCoords(e.clientX, e.clientY);
+  };
+
+  const handlePointerMoveDisc = (e) => {
+    if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    e.stopPropagation();
+    updateDirectionFromCoords(e.clientX, e.clientY);
+  };
+
+  const handlePointerUpDisc = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    setMobileMove(prev => ({
+      ...prev,
+      forward: false,
+      backward: false,
+      left: false,
+      right: false
+    }));
+  };
+
+  // Botón individual de dirección con Pointer Capture asegurado
+  const handleBtnDown = (dir) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
     setMobileMove(prev => ({ ...prev, [dir]: true }));
   };
 
-  const handleDirEnd = (dir) => (e) => {
+  const handleBtnUp = (dir) => (e) => {
     e.preventDefault();
     e.stopPropagation();
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
     setMobileMove(prev => ({ ...prev, [dir]: false }));
   };
 
@@ -77,7 +141,7 @@ export function MobileControls() {
 
   return (
     <div id="mobile-hud-overlay">
-      {/* Botón de Pausa Flotante (Superior Derecho) */}
+      {/* Botón de Pausa Flotante */}
       <button
         type="button"
         className="mobile-top-pause-btn"
@@ -87,17 +151,23 @@ export function MobileControls() {
         <Pause size={22} />
       </button>
 
-      {/* D-Pad Circular en la esquina inferior izquierda */}
+      {/* D-Pad Circular táctil continuo */}
       <div className="mobile-dpad-container" aria-label="Controles de movimiento">
-        <div className="dpad-disc">
+        <div
+          ref={discRef}
+          className="dpad-disc"
+          onPointerDown={handlePointerDownDisc}
+          onPointerMove={handlePointerMoveDisc}
+          onPointerUp={handlePointerUpDisc}
+          onPointerCancel={handlePointerUpDisc}
+        >
           {/* Botón Arriba (Avanzar) */}
           <button
             type="button"
-            className="dpad-btn dpad-up"
-            onPointerDown={handleDirStart('forward')}
-            onPointerUp={handleDirEnd('forward')}
-            onPointerCancel={handleDirEnd('forward')}
-            onPointerLeave={handleDirEnd('forward')}
+            className={`dpad-btn dpad-up ${mobileMove.forward ? 'active' : ''}`}
+            onPointerDown={handleBtnDown('forward')}
+            onPointerUp={handleBtnUp('forward')}
+            onPointerCancel={handleBtnUp('forward')}
             aria-label="Avanzar"
           >
             <ChevronUp size={28} />
@@ -106,11 +176,10 @@ export function MobileControls() {
           {/* Botón Izquierda */}
           <button
             type="button"
-            className="dpad-btn dpad-left"
-            onPointerDown={handleDirStart('left')}
-            onPointerUp={handleDirEnd('left')}
-            onPointerCancel={handleDirEnd('left')}
-            onPointerLeave={handleDirEnd('left')}
+            className={`dpad-btn dpad-left ${mobileMove.left ? 'active' : ''}`}
+            onPointerDown={handleBtnDown('left')}
+            onPointerUp={handleBtnUp('left')}
+            onPointerCancel={handleBtnUp('left')}
             aria-label="Izquierda"
           >
             <ChevronLeft size={28} />
@@ -122,24 +191,22 @@ export function MobileControls() {
           {/* Botón Derecha */}
           <button
             type="button"
-            className="dpad-btn dpad-right"
-            onPointerDown={handleDirStart('right')}
-            onPointerUp={handleDirEnd('right')}
-            onPointerCancel={handleDirEnd('right')}
-            onPointerLeave={handleDirEnd('right')}
+            className={`dpad-btn dpad-right ${mobileMove.right ? 'active' : ''}`}
+            onPointerDown={handleBtnDown('right')}
+            onPointerUp={handleBtnUp('right')}
+            onPointerCancel={handleBtnUp('right')}
             aria-label="Derecha"
           >
             <ChevronRight size={28} />
           </button>
 
-          {/* Botón Abajo (Retroceder) */}
+          {/* Botón Abajo (Retroceder / Ir para abajo) */}
           <button
             type="button"
-            className="dpad-btn dpad-down"
-            onPointerDown={handleDirStart('backward')}
-            onPointerUp={handleDirEnd('backward')}
-            onPointerCancel={handleDirEnd('backward')}
-            onPointerLeave={handleDirEnd('backward')}
+            className={`dpad-btn dpad-down ${mobileMove.backward ? 'active' : ''}`}
+            onPointerDown={handleBtnDown('backward')}
+            onPointerUp={handleBtnUp('backward')}
+            onPointerCancel={handleBtnUp('backward')}
             aria-label="Retroceder"
           >
             <ChevronDown size={28} />
@@ -147,7 +214,7 @@ export function MobileControls() {
         </div>
       </div>
 
-      {/* Zona de Botones de Acción e Interacción (Inferior Derecha) */}
+      {/* Zona de Botones de Acción e Interacción */}
       <div className="mobile-actions-container">
         {/* Botón de Esprintar / Correr */}
         <button

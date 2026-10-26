@@ -113,7 +113,11 @@ export function ReaderModal() {
 
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
-        const viewport = page.getViewport({ scale: window.innerWidth <= 768 ? 1.0 : 1.4 });
+        const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
+        const unscaledViewport = page.getViewport({ scale: 1.0 });
+        const fitScale = (containerWidth - 20) / Math.max(1, unscaledViewport.width);
+        const scale = window.innerWidth <= 768 ? Math.max(0.55, Math.min(fitScale, 1.25)) : 1.4;
+        const viewport = page.getViewport({ scale });
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;

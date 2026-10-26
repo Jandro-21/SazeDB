@@ -17,7 +17,13 @@ export function AppContent() {
       <div id="canvas-container">
         <Canvas
           camera={{ position: [0, 1.7, 2.5], fov: 70 }}
-          gl={{ antialias: false, powerPreference: 'high-performance' }}
+          dpr={[1, 1.5]}
+          gl={{
+            antialias: false,
+            powerPreference: 'high-performance',
+            stencil: false,
+            depth: true
+          }}
         >
           <Scene />
         </Canvas>

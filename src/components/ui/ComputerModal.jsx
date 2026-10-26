@@ -114,15 +114,19 @@ export function ComputerModal() {
 
   // Manejador de carga de archivo de lectura (.pdf, .epub, .azw3)
   const handleDocFileChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files && e.target.files[0];
     if (file) {
+      const ext = file.name ? file.name.split('.').pop().toLowerCase() : '';
       const reader = new FileReader();
       reader.onload = (evt) => {
         setPendingDoc({
           arrayBuffer: evt.target.result,
           fileName: file.name,
-          fileType: file.type || file.name.split('.').pop()
+          fileType: ext || file.type || 'pdf'
         });
+      };
+      reader.onerror = () => {
+        alert('Error al leer el archivo en el dispositivo. Por favor, inténtalo de nuevo.');
       };
       reader.readAsArrayBuffer(file);
     }
@@ -130,7 +134,7 @@ export function ComputerModal() {
 
   // Manejador de imagen de portada
   const handleCoverFileChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files && e.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (evt) => {
@@ -248,14 +252,34 @@ export function ComputerModal() {
               <input
                 type="file"
                 ref={fileInputRef}
-                accept=".pdf,.epub,.azw3"
+                accept=".pdf,.epub,.azw3,application/pdf,application/epub+zip,application/x-mobipocket-ebook,application/octet-stream,*/*"
                 onChange={handleDocFileChange}
-                className="file-input-clean"
+                style={{ display: 'none' }}
               />
+              <button
+                type="button"
+                className="custom-file-btn"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <UploadCloud size={18} />
+                <span>{pendingDoc ? 'Cambiar archivo digital' : 'Seleccionar archivo (PDF, EPUB, AZW3)'}</span>
+              </button>
               {pendingDoc && (
                 <div className="doc-file-info success">
                   <Check size={14} />
-                  <span>Documento cargado: {pendingDoc.fileName}</span>
+                  <span className="file-name-truncate">{pendingDoc.fileName}</span>
+                  <button
+                    type="button"
+                    className="btn-remove-file"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPendingDoc(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    title="Quitar archivo"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               )}
             </div>
@@ -271,8 +295,16 @@ export function ComputerModal() {
                 ref={coverFileInputRef}
                 accept="image/*"
                 onChange={handleCoverFileChange}
-                className="file-input-clean"
+                style={{ display: 'none' }}
               />
+              <button
+                type="button"
+                className="custom-file-btn secondary"
+                onClick={() => coverFileInputRef.current?.click()}
+              >
+                <Image size={16} />
+                <span>Subir portada desde dispositivo</span>
+              </button>
               <input
                 type="text"
                 placeholder="O pega aquí la URL de la imagen..."
