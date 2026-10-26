@@ -27,7 +27,12 @@ export function MobileControls() {
 
   const [isSprintActive, setIsSprintActive] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
+  const [stickOffset, setStickOffset] = useState({ x: 0, y: 0 });
+
   const discRef = useRef(null);
+  const dpadPointerId = useRef(null);
+  const sprintHolding = useRef(false);
+  const sprintDownTime = useRef(0);
 
   // Detectar si el dispositivo es táctil o pantalla pequeña
   useEffect(() => {
@@ -40,10 +45,6 @@ export function MobileControls() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  if (!isMobileDevice || !hasGameStarted || isComputerOpen || activeReaderBook || isPauseOpen) {
-    return null;
-  }
-
   // Actualizar movimiento según la posición del toque respecto al centro del D-Pad
   const updateDirectionFromCoords = (clientX, clientY) => {
     if (!discRef.current) return;
@@ -53,19 +54,38 @@ export function MobileControls() {
 
     const dx = clientX - centerX;
     const dy = clientY - centerY;
-    const threshold = 12; // zona muerta central
 
+    // Calcular desplazamiento visual del stick central
+    const dist = Math.hypot(dx, dy);
+    const maxNubDist = 26;
+    if (dist > 0) {
+      const angle = Math.atan2(dy, dx);
+      const clampedDist = Math.min(dist, maxNubDist);
+      setStickOffset({
+        x: Math.cos(angle) * clampedDist,
+        y: Math.sin(angle) * clampedDist
+      });
+    } else {
+      setStickOffset({ x: 0, y: 0 });
+    }
+
+    const threshold = 12; // zona muerta central
     const forward = dy < -threshold;
     const backward = dy > threshold;
     const left = dx < -threshold;
     const right = dx > threshold;
+
+    // Si se empuja el stick al límite superior (dy < -48), activar auto-sprint
+    const isPushSprint = dy < -48;
+    const shouldSprint = isSprintActive || sprintHolding.current || isPushSprint;
 
     setMobileMove(prev => ({
       ...prev,
       forward,
       backward,
       left,
-      right
+      right,
+      sprint: shouldSprint
     }));
   };
 
@@ -75,58 +95,71 @@ export function MobileControls() {
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch (err) {}
+    dpadPointerId.current = e.pointerId;
     updateDirectionFromCoords(e.clientX, e.clientY);
   };
 
   const handlePointerMoveDisc = (e) => {
-    if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    if (dpadPointerId.current === null || e.pointerId !== dpadPointerId.current) return;
     e.preventDefault();
     e.stopPropagation();
     updateDirectionFromCoords(e.clientX, e.clientY);
   };
 
   const handlePointerUpDisc = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch (err) {}
-    setMobileMove(prev => ({
-      ...prev,
-      forward: false,
-      backward: false,
-      left: false,
-      right: false
-    }));
+    if (dpadPointerId.current !== null && e.pointerId === dpadPointerId.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+      dpadPointerId.current = null;
+      setStickOffset({ x: 0, y: 0 });
+      setMobileMove(prev => ({
+        ...prev,
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        sprint: isSprintActive || sprintHolding.current
+      }));
+    }
   };
 
-  // Botón individual de dirección con Pointer Capture asegurado
-  const handleBtnDown = (dir) => (e) => {
+  // Manejador del botón de sprint: Soporta tanto mantener pulsado (hold) como toque rápido (toggle)
+  const handleSprintDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch (err) {}
-    setMobileMove(prev => ({ ...prev, [dir]: true }));
+    sprintHolding.current = true;
+    sprintDownTime.current = Date.now();
+    setMobileMove(m => ({ ...m, sprint: true }));
   };
 
-  const handleBtnUp = (dir) => (e) => {
+  const handleSprintUp = (e) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch (err) {}
-    setMobileMove(prev => ({ ...prev, [dir]: false }));
-  };
+    sprintHolding.current = false;
+    const duration = Date.now() - sprintDownTime.current;
 
-  const toggleSprint = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsSprintActive(prev => {
-      const next = !prev;
-      setMobileMove(m => ({ ...m, sprint: next }));
-      return next;
-    });
+    if (duration < 280) {
+      // Tap rápido: alternar modo toggle
+      setIsSprintActive(prev => {
+        const next = !prev;
+        setMobileMove(m => ({ ...m, sprint: next }));
+        return next;
+      });
+    } else {
+      // Hold prolongado: al soltar el dedo, desactivar si no estaba bloqueado previamente
+      if (!isSprintActive) {
+        setMobileMove(m => ({ ...m, sprint: false }));
+      }
+    }
   };
 
   const handleAction = (e) => {
@@ -138,6 +171,12 @@ export function MobileControls() {
       openComputer();
     }
   };
+
+  if (!isMobileDevice || !hasGameStarted || isComputerOpen || activeReaderBook || isPauseOpen) {
+    return null;
+  }
+
+  const isCurrentlySprinting = isSprintActive || mobileMove.sprint;
 
   return (
     <div id="mobile-hud-overlay">
@@ -151,7 +190,7 @@ export function MobileControls() {
         <Pause size={22} />
       </button>
 
-      {/* D-Pad Circular táctil continuo */}
+      {/* D-Pad Circular táctil continuo y fluido */}
       <div className="mobile-dpad-container" aria-label="Controles de movimiento">
         <div
           ref={discRef}
@@ -161,70 +200,61 @@ export function MobileControls() {
           onPointerUp={handlePointerUpDisc}
           onPointerCancel={handlePointerUpDisc}
         >
-          {/* Botón Arriba (Avanzar) */}
-          <button
-            type="button"
+          {/* Indicador Arriba (Avanzar) */}
+          <div
             className={`dpad-btn dpad-up ${mobileMove.forward ? 'active' : ''}`}
-            onPointerDown={handleBtnDown('forward')}
-            onPointerUp={handleBtnUp('forward')}
-            onPointerCancel={handleBtnUp('forward')}
-            aria-label="Avanzar"
+            aria-hidden="true"
           >
             <ChevronUp size={28} />
-          </button>
+          </div>
 
-          {/* Botón Izquierda */}
-          <button
-            type="button"
+          {/* Indicador Izquierda */}
+          <div
             className={`dpad-btn dpad-left ${mobileMove.left ? 'active' : ''}`}
-            onPointerDown={handleBtnDown('left')}
-            onPointerUp={handleBtnUp('left')}
-            onPointerCancel={handleBtnUp('left')}
-            aria-label="Izquierda"
+            aria-hidden="true"
           >
             <ChevronLeft size={28} />
-          </button>
+          </div>
 
-          {/* Centro del D-Pad */}
-          <div className="dpad-center" />
+          {/* Stick Central Dinámico táctil */}
+          <div
+            className="dpad-center"
+            style={{
+              transform: `translate(calc(-50% + ${stickOffset.x}px), calc(-50% + ${stickOffset.y}px))`
+            }}
+          />
 
-          {/* Botón Derecha */}
-          <button
-            type="button"
+          {/* Indicador Derecha */}
+          <div
             className={`dpad-btn dpad-right ${mobileMove.right ? 'active' : ''}`}
-            onPointerDown={handleBtnDown('right')}
-            onPointerUp={handleBtnUp('right')}
-            onPointerCancel={handleBtnUp('right')}
-            aria-label="Derecha"
+            aria-hidden="true"
           >
             <ChevronRight size={28} />
-          </button>
+          </div>
 
-          {/* Botón Abajo (Retroceder / Ir para abajo) */}
-          <button
-            type="button"
+          {/* Indicador Abajo (Retroceder) */}
+          <div
             className={`dpad-btn dpad-down ${mobileMove.backward ? 'active' : ''}`}
-            onPointerDown={handleBtnDown('backward')}
-            onPointerUp={handleBtnUp('backward')}
-            onPointerCancel={handleBtnUp('backward')}
-            aria-label="Retroceder"
+            aria-hidden="true"
           >
             <ChevronDown size={28} />
-          </button>
+          </div>
         </div>
       </div>
 
       {/* Zona de Botones de Acción e Interacción */}
       <div className="mobile-actions-container">
-        {/* Botón de Esprintar / Correr */}
+        {/* Botón de Esprintar / Correr (Mantener para correr o tocar para alternar) */}
         <button
           type="button"
-          className={`mobile-sprint-btn ${isSprintActive ? 'active' : ''}`}
-          onClick={toggleSprint}
-          aria-label="Alternar modo correr"
+          className={`mobile-sprint-btn ${isCurrentlySprinting ? 'active' : ''}`}
+          onPointerDown={handleSprintDown}
+          onPointerUp={handleSprintUp}
+          onPointerCancel={handleSprintUp}
+          aria-label="Correr o alternar esprint"
         >
           <Zap size={22} />
-          <span className="sprint-label">{isSprintActive ? 'CORRIENDO' : 'CORRER'}</span>
+          <span className="sprint-label">{isCurrentlySprinting ? 'CORRIENDO' : 'CORRER'}</span>
         </button>
 
         {/* Botón Dinámico de Interacción al apuntar */}

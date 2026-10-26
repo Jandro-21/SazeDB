@@ -41,7 +41,8 @@ export function Player() {
   // Ángulos de cámara para móviles / táctil
   const cameraYaw = useRef(0);
   const cameraPitch = useRef(0);
-  const touchStart = useRef({ x: 0, y: 0, active: false });
+  const lookTouchId = useRef(null);
+  const lookLastPos = useRef({ x: 0, y: 0 });
 
   // Determinar si estamos exclusivamente en el HUB 3D activo
   const isHubActive = hasGameStarted && !isComputerOpen && !activeReaderBook && !isPauseOpen && !isTransitioning;
@@ -203,54 +204,96 @@ export function Player() {
     return () => window.removeEventListener('keydown', handleEscapeInHub);
   }, [isHubActive, unlockHubPointer, openPause]);
 
-  // Control táctil de rotación de cámara en móviles
+  // Sincronizar ángulos iniciales de la cámara para evitar saltos al iniciar o rotar
   useEffect(() => {
-    const dom = gl.domElement;
-    if (!dom) return;
+    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+    cameraYaw.current = euler.y;
+    cameraPitch.current = euler.x;
+  }, [camera]);
+
+  // Control táctil multi-touch de rotación de cámara en móviles (soporta correr y mirar a la vez)
+  useEffect(() => {
+    if (!isHubActive) {
+      lookTouchId.current = null;
+      return;
+    }
+
+    const isInteractiveUI = (target) => {
+      if (!target) return false;
+      return !!target.closest?.(
+        '.mobile-dpad-container, .mobile-actions-container, .mobile-top-pause-btn, #computer-modal, #reader-modal, #pause-menu, #blocker, button, a, input, textarea'
+      );
+    };
 
     const handleTouchStart = (e) => {
       if (!isHubActive) return;
-      if (e.touches.length === 1) {
-        touchStart.current = {
-          x: e.touches[0].clientX,
-          y: e.touches[0].clientY,
-          active: true
-        };
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        
+        // Si no tenemos dedo asignado a la cámara y el toque no es sobre un botón o D-Pad:
+        if (lookTouchId.current === null && !isInteractiveUI(touch.target)) {
+          lookTouchId.current = touch.identifier;
+          lookLastPos.current = { x: touch.clientX, y: touch.clientY };
+          // Sincronizar yaw y pitch con la rotación actual de la cámara
+          const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+          cameraYaw.current = euler.y;
+          cameraPitch.current = euler.x;
+          break;
+        }
       }
     };
 
     const handleTouchMove = (e) => {
-      if (!touchStart.current.active || !isHubActive) return;
-      if (e.touches.length !== 1) return;
+      if (!isHubActive || lookTouchId.current === null) return;
 
-      const deltaX = e.touches[0].clientX - touchStart.current.x;
-      const deltaY = e.touches[0].clientY - touchStart.current.y;
-      touchStart.current.x = e.touches[0].clientX;
-      touchStart.current.y = e.touches[0].clientY;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === lookTouchId.current) {
+          if (e.cancelable) {
+            e.preventDefault();
+          }
 
-      const sens = 0.0035 * (cameraSensitivity || 1.0);
-      cameraYaw.current -= deltaX * sens;
-      cameraPitch.current = Math.max(-1.45, Math.min(1.45, cameraPitch.current - deltaY * sens));
+          const deltaX = touch.clientX - lookLastPos.current.x;
+          const deltaY = touch.clientY - lookLastPos.current.y;
+          lookLastPos.current = { x: touch.clientX, y: touch.clientY };
 
-      camera.quaternion.setFromEuler(new THREE.Euler(cameraPitch.current, cameraYaw.current, 0, 'YXZ'));
+          const sens = 0.0035 * (cameraSensitivity || 1.0);
+          cameraYaw.current -= deltaX * sens;
+          cameraPitch.current = Math.max(-1.45, Math.min(1.45, cameraPitch.current - deltaY * sens));
+
+          camera.quaternion.setFromEuler(
+            new THREE.Euler(cameraPitch.current, cameraYaw.current, 0, 'YXZ')
+          );
+          break;
+        }
+      }
     };
 
-    const handleTouchEnd = () => {
-      touchStart.current.active = false;
+    const handleTouchEnd = (e) => {
+      if (lookTouchId.current === null) return;
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === lookTouchId.current) {
+          lookTouchId.current = null;
+          break;
+        }
+      }
     };
 
-    dom.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
 
     return () => {
-      dom.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [gl.domElement, isHubActive, cameraSensitivity, camera]);
+  }, [isHubActive, cameraSensitivity, camera]);
 
   // Físicas de movimiento y actualización de fotograma
   useFrame((state, delta) => {
@@ -281,8 +324,14 @@ export function Player() {
         controlsRef.current.moveRight(-velocity.current.x * clampedDelta);
         controlsRef.current.moveForward(-velocity.current.z * clampedDelta);
       } else {
-        const forwardVec = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, cameraYaw.current, 0));
-        const rightVec = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, cameraYaw.current, 0));
+        const forwardVec = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        forwardVec.y = 0;
+        forwardVec.normalize();
+
+        const rightVec = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        rightVec.y = 0;
+        rightVec.normalize();
+
         camera.position.addScaledVector(forwardVec, -velocity.current.z * clampedDelta);
         camera.position.addScaledVector(rightVec, -velocity.current.x * clampedDelta);
       }
